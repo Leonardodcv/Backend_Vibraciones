@@ -1,0 +1,6 @@
+-- EJEMPLO de permisos minimos. NO EJECUTAR sin adaptar el nombre del usuario.
+-- Crea/gestiona el LOGIN por medio del administrador SQL por separado.
+-- USE [MantenimientoPredictivo];
+-- GRANT SELECT ON dbo.LecturasVibraciones TO [usuario_django_vibraciones];
+-- GRANT SELECT, INSERT ON dbo.ResultadosAnomaliaVibraciones TO [usuario_django_vibraciones];
+-- No se requiere UPDATE/DELETE ni permisos sobre dbo.LecturasTanque.
