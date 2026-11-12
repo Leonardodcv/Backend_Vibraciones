@@ -1,0 +1,1061 @@
+{
+  "info": {
+    "_postman_id": "07708c5c-c665-4d13-bb23-ec76bdfc2cf0",
+    "name": "MantenimientoPredictivo - Vibraciones Django API v1.3 SM1281 + DB13",
+    "description": "14 endpoints GET sin body. 193 columnas SQL, 3 sensores, monitoreo SM1281, NotValid/Good/Warning/Alarm, espejo DB13, modelos por velocidad. Compatible con Node-RED v1.3.2 y la tabla SQL ya migrada.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Estado del servidor",
+      "item": [
+        {
+          "name": "GET - Salud / Conexión SQL",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/health/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            },
+            "description": "Comprueba la disponibilidad de Django y la conexión con SQL Server. Respuesta: estado, sql y version. HTTP 200 si SQL responde, 503 si hay degradación.\n\nMétodo: GET. Body: none. No requiere X-API-Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Estado del modelo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/modelo/estado/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "modelo",
+                "estado"
+              ]
+            },
+            "description": "Consulta si existe el modelo IsolationForest3S_Regimenes entrenado, metadatos, caracteristicas y bandas de velocidad aprendidas. El entrenamiento no se inicia con HTTP: se ejecuta mediante python manage.py train_vibration_model.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Lecturas e historicos",
+      "item": [
+        {
+          "name": "GET - Última lectura de 3 sensores",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/ultima/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "ultima"
+              ]
+            },
+            "description": "Devuelve lectura con las 193 columnas disponibles (incluidas las columnas NULL históricas) y prediccion. Incluye fecha_registro_utc y fecha_registro_mexico. Responde NO_ENTRENADO si aún no hay modelo.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key.\nIncluye estados operativos; Hz VFD es proxy, no barra rps."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Histórico / últimas 6 horas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/historico/?hours=6&limit=2000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "historico"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "6"
+                },
+                {
+                  "key": "limit",
+                  "value": "2000"
+                }
+              ]
+            },
+            "description": "Últimas lecturas por fila; hours permite 1..168 y limit 1..5000. Resultado: count, results, timezone_presentacion y version_modelo.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key.\nIncluye estados operativos; Hz VFD es proxy, no barra rps."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Histórico / últimas 24 horas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/historico/?hours=24&limit=2000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "historico"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                },
+                {
+                  "key": "limit",
+                  "value": "2000"
+                }
+              ]
+            },
+            "description": "Variante de histórico para 24 horas. El límite por defecto es 2000 filas, no asegura la totalidad de 24h a 1Hz; subir a 5000 si necesitas más y/o usar serie-temporal.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key.\nIncluye estados operativos; Hz VFD es proxy, no barra rps."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Serie temporal / 6h / cada minuto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/serie-temporal/?hours=6&interval_minutes=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "serie-temporal"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "6"
+                },
+                {
+                  "key": "interval_minutes",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Agregados (promedios) por minuto; hours 1..168, interval_minutes solo 1, 5, 15, 30 o 60. Útil para gráficas 6h.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Serie temporal / 24h / cada 5 minutos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/serie-temporal/?hours=24&interval_minutes=5",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "serie-temporal"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                },
+                {
+                  "key": "interval_minutes",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Agregados por bloques de 5 minutos en últimas 24 horas. Incluye RPM, 3 sensores, VFD, ciertos campos eléctricos y máximo índice anómalo.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Analisis predictivo",
+      "item": [
+        {
+          "name": "GET - Anomalías / puntuación >= 60",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/anomalias/?hours=24&min_score=60&limit=200",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "anomalias"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                },
+                {
+                  "key": "min_score",
+                  "value": "60"
+                },
+                {
+                  "key": "limit",
+                  "value": "200"
+                }
+              ]
+            },
+            "description": "Anomalías persistidas del modelo activo. hours 1..168, min_score 0..100, limit 1..1000. Pueden no aparecer hasta ejecutar score_vibrations.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key.\nLa tabla de scores filtra solo el modelo v1.2 activo; v1.1 permanece sin modificar."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Anomalías / puntuación >= 85",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/anomalias/?hours=24&min_score=85&limit=200",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "anomalias"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                },
+                {
+                  "key": "min_score",
+                  "value": "85"
+                },
+                {
+                  "key": "limit",
+                  "value": "200"
+                }
+              ]
+            },
+            "description": "Variación enfocada en índices 85 o superiores. No debe interpretarse como probabilidad de avería.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key.\nLa tabla de scores filtra solo el modelo v1.2 activo; v1.1 permanece sin modificar."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Proyección / próximos 30 min",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/proyeccion/?window_minutes=60&horizon_minutes=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "proyeccion"
+              ],
+              "query": [
+                {
+                  "key": "window_minutes",
+                  "value": "60"
+                },
+                {
+                  "key": "horizon_minutes",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Proyección experimental Theil-Sen de vRMS para tres sensores; window_minutes entre 30 y 60, horizon_minutes entre 5 y 60. Requiere al menos 12 minutos válidos y cobertura >=20 min; puede devolver disponible:false.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key.\nSolo marcha estable; no mezclar cambios de regimen."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Proyección / próximos 60 min",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/proyeccion/?window_minutes=60&horizon_minutes=60",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "proyeccion"
+              ],
+              "query": [
+                {
+                  "key": "window_minutes",
+                  "value": "60"
+                },
+                {
+                  "key": "horizon_minutes",
+                  "value": "60"
+                }
+              ]
+            },
+            "description": "Variación a 60 minutos; no estima tiempo hasta falla ni vida útil remanente.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key.\nSolo marcha estable; no mezclar cambios de regimen."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Variables y calidad",
+      "item": [
+        {
+          "name": "GET - Mapa de las 193 columnas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/variables/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "variables"
+              ]
+            },
+            "description": "Lista columnas SQL por grupo, offsets confirmados de sensores, características del modelo activo y metadatos.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Calidad / 24 horas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/calidad/?hours=24",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "calidad"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                }
+              ]
+            },
+            "description": "Porcentaje de campos presentes en 24h. hours 1..168. No valida calidad física ni precisión de sensores; solo presencia de registros.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET - Calidad / 6 horas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/calidad/?hours=6",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "calidad"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "6"
+                }
+              ]
+            },
+            "description": "Variante de disponibilidad de las últimas 6 horas.\n\nMétodo: GET. Body: none. Encabezado obligatorio: X-API-Key."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"La respuesta es JSON\", function () {",
+                  "  pm.expect(pm.response.headers.get(\"Content-Type\") || \"\").to.include(\"application/json\");",
+                  "});",
+                  "if (pm.response.code !== 200) {",
+                  "  console.warn(\"HTTP \" + pm.response.code + \": \" + pm.response.text());",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Estados operativos y velocidad v1.3",
+      "item": [
+        {
+          "name": "GET - Estado actual del motor (ultimas 30 lecturas)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/estado/?samples=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "estado"
+              ],
+              "query": [
+                {
+                  "key": "samples",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Clasifica marcha estable, transicion, reposo DC, orden de marcha sin giro o falla etiquetada; devuelve prediccion contextual.\nMetodo GET; Body none; Headers X-API-Key y Accept."
+          },
+          "response": []
+        },
+        {
+          "name": "GET - Regimenes aprendidos y resumen SQL 24h",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/regimenes/?hours=24",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "regimenes"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                }
+              ]
+            },
+            "description": "Informa centros de velocidad aprendidos, bandas descartadas y conteos aproximados de estados de VFD.\nMetodo GET; Body none; Headers X-API-Key y Accept."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "06 - Diagnósticos SM1281 v1.3 (DB23 / DB13)",
+      "item": [
+        {
+          "name": "GET - Diagnóstico SM1281 de última lectura",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/diagnosticos/ultima/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "diagnosticos",
+                "ultima"
+              ]
+            },
+            "description": "Interpreta estados RAW de 10 monitores por canal. Incluye alarmas, avisos, calidad, flags y comparación DB23 contra DB13; no escribe SQL.\nMétodo: GET; Body: none; Headers: X-API-Key y Accept."
+          },
+          "response": []
+        },
+        {
+          "name": "GET - Historial de diagnósticos (últimas 24h)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/diagnosticos/historico/?hours=24&limit=200&raw=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "diagnosticos",
+                "historico"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                },
+                {
+                  "key": "limit",
+                  "value": "200"
+                },
+                {
+                  "key": "raw",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Historial compacto de alertas, sensores y DB13. raw=1 incluye mediciones completas del SQL. Límite 1..1000.\nMétodo: GET; Body: none; Headers: X-API-Key y Accept."
+          },
+          "response": []
+        },
+        {
+          "name": "GET - Historial con RAW incluido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/diagnosticos/historico/?hours=6&limit=20&raw=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "diagnosticos",
+                "historico"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "6"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "raw",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Incluye campos SQL RAW y diagnósticos detallados. Precaución con el tamaño de respuesta.\nMétodo: GET; Body: none; Headers: X-API-Key y Accept."
+          },
+          "response": []
+        },
+        {
+          "name": "GET - Resumen de diagnósticos PLC",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/vibraciones/diagnosticos/resumen/?hours=24",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vibraciones",
+                "diagnosticos",
+                "resumen"
+              ],
+              "query": [
+                {
+                  "key": "hours",
+                  "value": "24"
+                }
+              ]
+            },
+            "description": "Cuenta alertas, monitores NotValid, sensores no disponibles y cobertura de espejos DB13 en SQL; no equivale a fallas confirmadas.\nMétodo: GET; Body: none; Headers: X-API-Key y Accept."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8006",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "REEMPLAZAR_CON_VIBRATIONS_API_KEY",
+      "type": "string"
+    }
+  ],
+  "event": []
+}

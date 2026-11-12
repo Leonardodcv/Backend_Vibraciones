@@ -7,3 +7,7 @@ __pycache__/
 artifacts/*
 !artifacts/.gitkeep
 *.log
+
+# Etiquetas revisadas por operador, no publicar versiones con datos reales
+# (la plantilla CSV vacia esta incluida en el ZIP)
+/data/eventos_operativos.csv

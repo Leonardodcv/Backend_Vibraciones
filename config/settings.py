@@ -70,6 +70,28 @@ VIBRATIONS_MIN_TRAIN_MINUTES = float(os.getenv("VIBRATIONS_MIN_TRAIN_MINUTES", "
 
 # El demo usa HTTP local en desarrollo. Implementar HTTPS en proxy inverso en produccion.
 VIBRATIONS_USE_VFD_CONTEXT = flag("VIBRATIONS_USE_VFD_CONTEXT", True)
+# v1.3: el DKW / alarma PLC es evidencia adicional, NO etiqueta de fallo.
+# annotate (por defecto), exclude_alarm, exclude_warning_alarm.
+VIBRATIONS_TRAIN_SM1281_ALERT_POLICY = os.getenv(
+    'VIBRATIONS_TRAIN_SM1281_ALERT_POLICY', 'annotate'
+).strip().lower()
+# DB13 es espejo, puede tener desfases; solo bloquear si se decide expresamente.
+VIBRATIONS_DB13_STRICT = flag('VIBRATIONS_DB13_STRICT', False)
+VIBRATIONS_DB13_REL_TOL = float(os.getenv('VIBRATIONS_DB13_REL_TOL', '0.10'))
+VIBRATIONS_DB13_ABS_TOL = float(os.getenv('VIBRATIONS_DB13_ABS_TOL', '0.05'))
+
+
+# v1.3: el eje por defecto son Hz del VFD, NO vueltas/s de la barra.
+# Fuentes: vfd_hz, barra_rps (CSV de intervalos o lectura extra),
+# barra_rps_calibrada (requiere factor REAL comprobado en campo).
+VIBRATIONS_SPEED_SOURCE = os.getenv('VIBRATIONS_SPEED_SOURCE', 'vfd_hz').lower()
+VIBRATIONS_SPEED_BAND_WIDTH = float(os.getenv('VIBRATIONS_SPEED_BAND_WIDTH', '2.0'))
+_bar_factor = os.getenv('VIBRATIONS_BAR_RPS_PER_VFD_HZ', '').strip()
+VIBRATIONS_BAR_RPS_PER_VFD_HZ = float(_bar_factor) if _bar_factor else None
+_eventos = os.getenv('VIBRATIONS_EVENTS_CSV', 'data/eventos_operativos.csv').strip()
+VIBRATIONS_EVENTS_CSV = (BASE_DIR / _eventos) if _eventos and not Path(_eventos).is_absolute() else _eventos
+VIBRATIONS_DC_BUS_MIN_V = float(os.getenv('VIBRATIONS_DC_BUS_MIN_V', '100'))
+VIBRATIONS_HZ_TRANSITION_DELTA = float(os.getenv('VIBRATIONS_HZ_TRANSITION_DELTA', '1.0'))
 
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

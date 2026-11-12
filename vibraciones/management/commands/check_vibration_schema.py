@@ -28,5 +28,5 @@ class Command(BaseCommand):
         except Exception as exc:
             raise CommandError("No se pudo consultar esquema SQL: " + type(exc).__name__) from exc
         self.stdout.write(self.style.SUCCESS(
-            f"Esquema compatible v1.1.0 | LecturasVibraciones: {count} filas | Tabla de resultados: OK"
+            f"Esquema compatible v1.3.0 (193 columnas) | LecturasVibraciones: {count} filas | Tabla de resultados: OK"
         ))

@@ -8,13 +8,17 @@ from vibraciones.fields import ALL_COLUMNS, COLUMNS_BY_GROUP, MEDIDOR_FIELDS
 
 
 class SchemaTests(SimpleTestCase):
-    def test_74_columns_unique_and_three_sensor_groups(self):
-        self.assertEqual(len(ALL_COLUMNS), 74)
+    def test_193_columns_unique_and_three_sensor_groups(self):
+        self.assertEqual(len(ALL_COLUMNS), 193)
         self.assertEqual(len(set(ALL_COLUMNS)), 74)
         self.assertIn('s3_vrms_mm_s', ALL_COLUMNS)
         self.assertIn('medidor_thd_corriente_l2_raw', ALL_COLUMNS)
         self.assertEqual(len(COLUMNS_BY_GROUP['sensor_3']), 8)
         self.assertEqual(len(MEDIDOR_FIELDS), 20)
+        self.assertEqual(len(COLUMNS_BY_GROUP['velocidad_y_modulo_sm1281']), 16)
+        self.assertEqual(len(COLUMNS_BY_GROUP['espejo_db13_sensor_3']), 7)
+        self.assertEqual(len(COLUMNS_BY_GROUP['diagnostico_sm1281_sensor_1']), 18)
+        self.assertIn('s3_sm1281_tiene_alarma', ALL_COLUMNS)
 
     def test_select_is_explicit_and_safe(self):
         self.assertNotIn('SELECT *', db.SELECT_COLUMNS)
@@ -47,7 +51,7 @@ class SchemaTests(SimpleTestCase):
     def test_parameterized_scoring_insert(self, connector):
         connector.return_value = MagicMock()
         db.save_score(lectura_id=123, index=84.1,
-                      version='v1.1.0-test', details_json='{"estado":"ANOMALIA"}')
+                      version='v1.3.0-test', details_json='{"estado":"ANOMALIA"}')
         cursor = connector.return_value.cursor.return_value
         args, kwargs = cursor.execute.call_args
         self.assertIn('VALUES (?, ?, ?, ?, ?)', args[0])
@@ -78,3 +82,16 @@ class SchemaTests(SimpleTestCase):
         sql = connector.return_value.cursor.return_value.execute.call_args[0][0]
         self.assertIn('s3_vrms_promedio_mm_s', sql)
         self.assertIn('medidor_frecuencia_promedio_hz', sql)
+
+    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'})
+    @patch('vibraciones.db.pyodbc.connect')
+    def test_diagnostic_history_is_parameterized(self, connector):
+        connector.return_value = MagicMock()
+        connector.return_value.cursor.return_value.execute.return_value.description = [('id',)]
+        connector.return_value.cursor.return_value.execute.return_value.fetchall.return_value = []
+        self.assertEqual(db.diagnostics_rows(hours=6, limit=20), [])
+        args = connector.return_value.cursor.return_value.execute.call_args[0]
+        self.assertIn('SELECT TOP (?)', args[0])
+        self.assertIn('s1_sm1281_mon_dkw_bits', args[0])
+        self.assertIn('db13_s3_vrms_mm_s', args[0])
+        self.assertEqual(args[1], 20)

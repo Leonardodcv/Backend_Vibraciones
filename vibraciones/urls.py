@@ -11,4 +11,9 @@ urlpatterns = [
     path('vibraciones/proyeccion/', views.ForecastView.as_view(), name='forecast'),
     path('vibraciones/variables/', views.VariablesView.as_view(), name='variables'),
     path('vibraciones/calidad/', views.QualityView.as_view(), name='quality'),
+    path('vibraciones/estado/', views.EstadoOperativoView.as_view(), name='operational-status'),
+    path('vibraciones/regimenes/', views.RegimenesView.as_view(), name='speed-regimes'),
+    path('vibraciones/diagnosticos/ultima/', views.DiagnosticosUltimaView.as_view(), name='plc-diagnostics-latest'),
+    path('vibraciones/diagnosticos/historico/', views.DiagnosticosHistoricoView.as_view(), name='plc-diagnostics-history'),
+    path('vibraciones/diagnosticos/resumen/', views.DiagnosticosResumenView.as_view(), name='plc-diagnostics-summary'),
 ]

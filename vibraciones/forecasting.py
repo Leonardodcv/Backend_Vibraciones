@@ -9,6 +9,7 @@ from django.conf import settings
 from scipy.stats import theilslopes
 
 from .modeling import _number, rpm_for
+from . import operacion
 
 
 def forecast_vrms(rows: list[dict], horizon_minutes: int = 30) -> dict:
@@ -21,7 +22,8 @@ def forecast_vrms(rows: list[dict], horizon_minutes: int = 30) -> dict:
         if row.get('modo_captura') in ('REPOSO', 'POST_PARO'):
             continue
         speed = rpm_for(row)
-        if speed is None or speed < settings.VIBRATIONS_MIN_RPM:
+        hz = _number(row.get('vfd_frecuencia_salida_hz'))
+        if (speed is None or speed <= 20) and (hz is None or hz <= 0.5):
             continue
         levels = [_number(row.get(f's{i}_vrms_mm_s')) for i in (1, 2, 3)]
         if levels[2] is None:
@@ -32,7 +34,8 @@ def forecast_vrms(rows: list[dict], horizon_minutes: int = 30) -> dict:
             minute = int(row['captura_unix_ms']) // 60000
         except (KeyError, TypeError, ValueError):
             continue
-        grouped[minute].append((speed, *levels))
+        # RPM del VFD para evaluar estabilidad de la proyeccion.
+        grouped[minute].append((speed if speed is not None else 0., *levels))
 
     if len(grouped) < 12:
         return {
@@ -57,7 +60,7 @@ def forecast_vrms(rows: list[dict], horizon_minutes: int = 30) -> dict:
         for m in minutes
     ], dtype=float)
     speeds = medians[:, 0]
-    cv = float(np.std(speeds) / np.mean(speeds))
+    cv = float(np.std(speeds) / max(float(np.mean(speeds)), 1e-6))
     if cv > .10:
         return {'disponible': False, 'razon': 'rpm_variable_no_comparable',
                 'cv_rpm': round(cv, 4), 'tiempo_hasta_falla': None}

@@ -1,0 +1,58 @@
+[OK] 119 columnas nuevas exactamente iguales a migracion SQL real
+[OK] 193 columnas total; sin duplicados
+[OK] 193 nombres de columna unicos
+[OK] Consulta modelo reduce peso en memoria
+[OK] bit 1 es NotValid
+[OK] bit 8 es Alarma
+[OK] bit 4 es Aviso
+[OK] bit 2 es Bueno
+[OK] S1 DKW alarma 8, visible sin imputar
+[OK] S2 DKW aviso 4, visible sin imputar
+[OK] S3 DKW bueno 2
+[OK] BPFO/BPFI/FTF/BSF NotValid no son fallos
+[OK] DB13 copia DB23
+[OK] Alarma DKW no bloquea modelo
+[OK] Cable roto bloquea inferencia
+[OK] QC DKW 0 bloquea inferencia
+[OK] DB13 discrepancia reportada
+[OK] 4 bandas de velocidad independientes entrenadas
+[OK] Version del nuevo modelo 1.3.0
+[OK] Alarmas PLC anotadas, no usadas como features
+[OK] Cobertura minima verificada por banda
+[OK] Metadatos documentan alertas en entrenamiento
+[OK] Indice en velocidad banda #1
+[OK] Indice en velocidad banda #2
+[OK] Indice en velocidad banda #3
+[OK] Indice en velocidad banda #4
+[OK] Sin extrapolar a velocidad desconocida
+[OK] Falla instrumento no crea score
+[OK] Anomalia vibratoria eleva o mantiene indice
+[OK] Reposo no es probabilidad de falla
+[OK] Cambio velocidad excluido de scoring
+[OK] Detalle SQL cabe NVARCHAR(1000)
+[OK] Artefacto 1.3 aislado serializa correctamente
+[OK] 14 rutas URL v1.3 declaradas
+[OK] Postman GET: GET - Salud / Conexión SQL
+[OK] Postman GET: GET - Estado del modelo
+[OK] Postman GET: GET - Última lectura de 3 sensores
+[OK] Postman GET: GET - Histórico / últimas 6 horas
+[OK] Postman GET: GET - Histórico / últimas 24 horas
+[OK] Postman GET: GET - Serie temporal / 6h / cada minuto
+[OK] Postman GET: GET - Serie temporal / 24h / cada 5 minutos
+[OK] Postman GET: GET - Anomalías / puntuación >= 60
+[OK] Postman GET: GET - Anomalías / puntuación >= 85
+[OK] Postman GET: GET - Proyección / próximos 30 min
+[OK] Postman GET: GET - Proyección / próximos 60 min
+[OK] Postman GET: GET - Mapa de las 193 columnas
+[OK] Postman GET: GET - Calidad / 24 horas
+[OK] Postman GET: GET - Calidad / 6 horas
+[OK] Postman GET: GET - Estado actual del motor (ultimas 30 lecturas)
+[OK] Postman GET: GET - Regimenes aprendidos y resumen SQL 24h
+[OK] Postman GET: GET - Diagnóstico SM1281 de última lectura
+[OK] Postman GET: GET - Historial de diagnósticos (últimas 24h)
+[OK] Postman GET: GET - Historial con RAW incluido
+[OK] Postman GET: GET - Resumen de diagnósticos PLC
+[OK] Postman cubre las 14 rutas backend
+VALIDACION OFFLINE FINALIZADA: OK. No se consulto SQL ni PLC.
+PASS: 4 regimenes de velocidad, 3 sensores, 21 features, estados de reposo y relevador, fuera de rango, artefacto
+Scores de ejemplo (normal, atipico): {5.0: (0.0, 100.0), 10.0: (0.0, 100.0), 15.0: (0.0, 100.0), 20.0: (11.02, 100.0)}

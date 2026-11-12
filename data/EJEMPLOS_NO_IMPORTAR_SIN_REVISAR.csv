@@ -1,0 +1,3 @@
+inicio_utc,fin_utc,estado_real,barra_rps,normal_confirmado,descripcion
+2026-11-11T23:08:00Z,2026-11-12T13:00:00Z,REPOSO_CONFIRMADO,0,no,EJEMPLO horario aproximado REVISAR con operador y fuente fisica
+2026-11-12T13:20:00Z,2026-11-12T13:45:00Z,OPERACION_NORMAL_CONFIRMADA,20,no,EJEMPLO no confirmado velocidad real barra ni estado sano

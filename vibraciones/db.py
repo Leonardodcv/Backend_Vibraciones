@@ -12,13 +12,30 @@ from typing import Any, Iterator
 
 import pyodbc
 
-from .fields import ALL_COLUMNS
+from .fields import ALL_COLUMNS, MODEL_COLUMNS
 
 TABLE = 'dbo.LecturasVibraciones'
 RESULTS = 'dbo.ResultadosAnomaliaVibraciones'
-MODEL_NAME = 'IsolationForest3S'
+MODEL_NAME = 'IsolationForest3S_Regimenes_SM1281'
 BASE_COLUMNS = ALL_COLUMNS  # compatibilidad con comandos de la version 1.0
 SELECT_COLUMNS = ', '.join('l.[' + c + ']' for c in BASE_COLUMNS)
+SELECT_MODEL_COLUMNS = ', '.join('l.[' + c + ']' for c in MODEL_COLUMNS)
+# La SQL de modelo no necesita 193 columnas, para reducir memoria.
+DIAGNOSTIC_COLUMNS = tuple(dict.fromkeys((
+    'id','fecha_registro_utc','captura_unix_ms','modo_captura',
+    'rpm_vfd','vfd_frecuencia_salida_hz','estado_operativo_detalle',
+    *(f's{i}_{k}' for i in (1,2,3) for k in ('vrms_mm_s','arms_m_s2','dkw',
+                                             'peak_m_s2','qc_vrms','qc_arms','qc_dkw')),
+    *(f's{i}_sm1281_{k}' for i in (1,2,3) for k in (
+        'mon_vrms_bits','mon_arms_bits','mon_dkw_bits','mon_espectro_a_bits',
+        'mon_espectro_v_bits','mon_envolvente_bits','mon_bpfo_bits',
+        'mon_bpfi_bits','mon_ftf_bits','mon_bsf_bits','sensorstate_bits',
+        'faulttype_bits','tiene_aviso','tiene_alarma','sensor_conectado',
+        'sensor_corto','sensor_cable_roto')),
+    *(f'db13_s{i}_{k}' for i in (1,2,3) for k in (
+        'vrms_mm_s','arms_m_s2','dkw','peak_m_s2','qc_vrms','qc_arms','qc_dkw')),
+)))
+SELECT_DIAGNOSTIC_COLUMNS = ', '.join('l.[' + c + ']' for c in DIAGNOSTIC_COLUMNS)
 
 # Deshabilitar pooling opcional ANTES de la primera conexion pyodbc.
 if os.getenv('SQL_POOLING', 'no').strip().lower() in ('0', 'no', 'false', 'off'):
@@ -49,7 +66,7 @@ def _connection_string() -> str:
         f'DATABASE={quote(database)}',
         f'Encrypt={os.getenv("SQL_ENCRYPT", "no")}',
         f'TrustServerCertificate={os.getenv("SQL_TRUST_SERVER_CERTIFICATE", "yes")}',
-        'APP=VibracionesDjangoV1_1',
+        'APP=VibracionesDjangoV1_3',
     ]
     auth = os.getenv('SQL_AUTH', 'sql').strip().lower()
     if auth == 'windows':
@@ -110,9 +127,8 @@ def training_rows(start_ms: int, end_ms: int, limit: int = 50000) -> list[dict]:
     if not (1 <= limit <= 250000 and 0 < start_ms < end_ms):
         raise ValueError('Rango de entrenamiento o limit invalido')
     query = (
-        f'SELECT TOP (?) {SELECT_COLUMNS} FROM {TABLE} AS l '
+        f'SELECT TOP (?) {SELECT_MODEL_COLUMNS} FROM {TABLE} AS l '
         'WHERE l.captura_unix_ms >= ? AND l.captura_unix_ms < ? '
-        'AND l.modo_captura = \'ACTIVO\' '
         'AND l.s3_vrms_mm_s IS NOT NULL '
         'ORDER BY l.captura_unix_ms DESC, l.id DESC;'
     )
@@ -164,10 +180,10 @@ def unscored_rows(version: str, *, limit: int = 200, since_id: int = 0) -> list[
     # Excluir filas antiguas sin canal 3 y periodos en reposo para evitar que
     # una cola de miles de filas no calificables bloquee el scoring.
     query = (
-        f'SELECT TOP (?) {SELECT_COLUMNS} FROM {TABLE} AS l '
+        f'SELECT TOP (?) {SELECT_MODEL_COLUMNS} FROM {TABLE} AS l '
         'WHERE l.id > ? AND l.modo_captura = \'ACTIVO\' '
         'AND l.s3_vrms_mm_s IS NOT NULL AND l.s3_arms_m_s2 IS NOT NULL '
-        'AND (l.rpm_sm1281 >= ? OR l.rpm_vfd >= ?) '
+        'AND (l.rpm_vfd > ? OR l.vfd_frecuencia_salida_hz > ?) '
         f'AND NOT EXISTS (SELECT 1 FROM {RESULTS} AS r WHERE r.lectura_id = l.id '
         'AND r.modelo = ? AND r.version_modelo = ?) '
         'ORDER BY l.id DESC;'
@@ -175,8 +191,7 @@ def unscored_rows(version: str, *, limit: int = 200, since_id: int = 0) -> list[
     from django.conf import settings
     with sql_connection() as con:
         return _rows(con.cursor().execute(
-            query, limit, since_id, settings.VIBRATIONS_MIN_RPM,
-            settings.VIBRATIONS_MIN_RPM, MODEL_NAME, version,
+            query, limit, since_id, 20, 0.5, MODEL_NAME, version,
         ))
 
 
@@ -209,6 +224,9 @@ def timeline_rows(hours: int = 6, interval_minutes: int = 1,
         'l.s1_arms_m_s2, l.s2_arms_m_s2, l.s3_arms_m_s2, '
         'l.vfd_frecuencia_salida_hz, l.corriente_vfd_a, l.vfd_voltaje_bus_dc_v, '
         'l.medidor_frecuencia_hz, l.medidor_corriente_l1_a, l.medidor_corriente_l2_a, '
+        'l.vfd_regimen_hz, l.vfd_cambio_hz_por_seg, '
+        'l.s1_sm1281_tiene_alarma, l.s2_sm1281_tiene_alarma, l.s3_sm1281_tiene_alarma, '
+        'l.s1_sm1281_tiene_aviso, l.s2_sm1281_tiene_aviso, l.s3_sm1281_tiene_aviso, '
         'r.indice_anomalia '
         f'FROM {TABLE} AS l '
         'OUTER APPLY (SELECT TOP (1) r.indice_anomalia '
@@ -230,6 +248,14 @@ def timeline_rows(hours: int = 6, interval_minutes: int = 1,
         'AVG(medidor_frecuencia_hz) AS medidor_frecuencia_promedio_hz, '
         'AVG(medidor_corriente_l1_a) AS medidor_corriente_l1_promedio_a, '
         'AVG(medidor_corriente_l2_a) AS medidor_corriente_l2_promedio_a, '
+        'AVG(vfd_regimen_hz) AS vfd_regimen_promedio_hz, '
+        'MAX(vfd_cambio_hz_por_seg) AS vfd_cambio_hz_por_seg_max, '
+        'SUM(CASE WHEN s1_sm1281_tiene_alarma = 1 THEN 1 ELSE 0 END) AS muestras_alarma_sensor_1, '
+        'SUM(CASE WHEN s2_sm1281_tiene_alarma = 1 THEN 1 ELSE 0 END) AS muestras_alarma_sensor_2, '
+        'SUM(CASE WHEN s3_sm1281_tiene_alarma = 1 THEN 1 ELSE 0 END) AS muestras_alarma_sensor_3, '
+        'SUM(CASE WHEN s1_sm1281_tiene_aviso = 1 THEN 1 ELSE 0 END) AS muestras_aviso_sensor_1, '
+        'SUM(CASE WHEN s2_sm1281_tiene_aviso = 1 THEN 1 ELSE 0 END) AS muestras_aviso_sensor_2, '
+        'SUM(CASE WHEN s3_sm1281_tiene_aviso = 1 THEN 1 ELSE 0 END) AS muestras_aviso_sensor_3, '
         'MAX(indice_anomalia) AS indice_anomalia_max '
         'FROM serie GROUP BY bucket ORDER BY bucket ASC;'
     )
@@ -255,8 +281,94 @@ def coverage_rows(hours: int = 24) -> dict | None:
         'COUNT(l.corriente_vfd_a) AS corriente_vfd, '
         'COUNT(l.medidor_frecuencia_hz) AS medidor_hz, '
         'COUNT(l.medidor_corriente_l1_a) AS medidor_corriente_l1, '
-        'COUNT(l.medidor_thd_voltaje_l1_raw) AS medidor_thd_raw '
+        'COUNT(l.medidor_thd_voltaje_l1_raw) AS medidor_thd_raw ' +
+        ' '.join([f', COUNT(l.[{col}]) AS {name}' for col,name in (
+            ('sm1281_modulo_actualspeed_raw','modulo_speed_raw'),
+            ('sm1281_cfg_speedsource','cfg_speedsource'),
+            ('estado_operativo_detalle','estado_plc'),
+            ('vfd_regimen_hz','regimen_vfd_hz'),
+            ('vfd_cambio_hz_por_seg','derivada_vfd_hz'),
+            ('s1_sm1281_mon_dkw_bits','s1_mon_dkw'),
+            ('s2_sm1281_mon_dkw_bits','s2_mon_dkw'),
+            ('s3_sm1281_mon_dkw_bits','s3_mon_dkw'),
+            ('s1_sm1281_tiene_alarma','s1_flag_alarma'),
+            ('s2_sm1281_tiene_alarma','s2_flag_alarma'),
+            ('s3_sm1281_tiene_alarma','s3_flag_alarma'),
+            ('s1_sm1281_sensor_conectado','s1_sensor_conectado'),
+            ('s2_sm1281_sensor_conectado','s2_sensor_conectado'),
+            ('s3_sm1281_sensor_conectado','s3_sensor_conectado'),
+            ('db13_s1_vrms_mm_s','db13_s1_vrms'),
+            ('db13_s2_vrms_mm_s','db13_s2_vrms'),
+            ('db13_s3_vrms_mm_s','db13_s3_vrms'),
+        )]) + ' '
         f'FROM {TABLE} AS l WHERE l.captura_unix_ms >= ?;'
     )
     with sql_connection() as con:
         return _row(con.cursor().execute(query, after))
+
+
+def status_summary(hours: int = 24) -> dict:
+    """Agregado sobre SQL; sin leer todas las filas ni alterar el historico."""
+    if not 1 <= hours <= 168:
+        raise ValueError('hours debe ser 1..168')
+    after = now_ms() - hours * 3600 * 1000
+    query = (
+        'SELECT COUNT_BIG(*) AS total, '
+        'SUM(CASE WHEN l.rpm_vfd > 20 OR l.vfd_frecuencia_salida_hz > 0.5 THEN 1 ELSE 0 END) AS vfd_con_giro, '
+        'SUM(CASE WHEN (l.rpm_vfd = 0 OR l.rpm_vfd IS NULL) '
+        'AND (l.vfd_frecuencia_salida_hz = 0 OR l.vfd_frecuencia_salida_hz IS NULL) '
+        'AND l.vfd_voltaje_bus_dc_v >= 100 THEN 1 ELSE 0 END) AS parado_bus_energizado, '
+        'SUM(CASE WHEN l.motor_activo = 1 AND l.rpm_vfd = 0 '
+        'AND l.vfd_frecuencia_salida_hz = 0 THEN 1 ELSE 0 END) AS activos_etiquetados_sin_giro, '
+        'SUM(CASE WHEN l.vfd_fault <> 0 THEN 1 ELSE 0 END) AS fallos_vfd_reportados, '
+        "SUM(CASE WHEN l.modo_captura = 'POST_PARO' THEN 1 ELSE 0 END) AS capturas_post_paro, "
+        'SUM(CASE WHEN l.s1_sm1281_tiene_alarma = 1 THEN 1 ELSE 0 END) AS s1_alarma_sm1281, '
+        'SUM(CASE WHEN l.s2_sm1281_tiene_alarma = 1 THEN 1 ELSE 0 END) AS s2_alarma_sm1281, '
+        'SUM(CASE WHEN l.s3_sm1281_tiene_alarma = 1 THEN 1 ELSE 0 END) AS s3_alarma_sm1281, '
+        'SUM(CASE WHEN l.s1_sm1281_tiene_aviso = 1 THEN 1 ELSE 0 END) AS s1_aviso_sm1281, '
+        'SUM(CASE WHEN l.s2_sm1281_tiene_aviso = 1 THEN 1 ELSE 0 END) AS s2_aviso_sm1281, '
+        'SUM(CASE WHEN l.s3_sm1281_tiene_aviso = 1 THEN 1 ELSE 0 END) AS s3_aviso_sm1281, '
+        "SUM(CASE WHEN l.estado_operativo_detalle = 'GIRO_ESTABLE_VFD' THEN 1 ELSE 0 END) AS estado_giro_estable_plc, "
+        "SUM(CASE WHEN l.estado_operativo_detalle = 'CAMBIO_VELOCIDAD' THEN 1 ELSE 0 END) AS estado_cambio_velocidad_plc, "
+        'COUNT(DISTINCT CASE WHEN l.vfd_frecuencia_salida_hz > 0.5 '
+        'THEN CAST(ROUND(l.vfd_frecuencia_salida_hz / 2.0, 0) AS INT) END) AS bandas_hz_observadas '
+        f'FROM {TABLE} AS l WHERE l.captura_unix_ms >= ?;'
+    )
+    with sql_connection() as con:
+        return _row(con.cursor().execute(query, after)) or {}
+
+
+def diagnostics_rows(hours: int = 24, limit: int = 200) -> list[dict]:
+    """Consulta solo diagnosticos y los 3 espejos; no reentrena ni escribe."""
+    if not (1 <= hours <= 168 and 1 <= limit <= 1000):
+        raise ValueError('hours o limit fuera de rango')
+    after = now_ms() - hours * 3600 * 1000
+    query = (f'SELECT TOP (?) {SELECT_DIAGNOSTIC_COLUMNS} FROM {TABLE} AS l '
+             'WHERE l.captura_unix_ms >= ? ORDER BY l.id DESC;')
+    with sql_connection() as con:
+        return list(reversed(_rows(con.cursor().execute(query, limit, after))))
+
+
+def diagnostics_summary(hours: int = 24) -> dict:
+    """Agrega alertas y cobertura desde SQL sin desplazar datos existentes."""
+    if not 1 <= hours <= 168:
+        raise ValueError('hours debe estar entre 1 y 168')
+    after = now_ms() - hours * 3600 * 1000
+    parts = [
+        'COUNT_BIG(*) AS total',
+        'MAX(l.captura_unix_ms) AS ultima_captura_unix_ms',
+    ]
+    for i in (1, 2, 3):
+        parts.extend([
+            f'COUNT(l.s{i}_sm1281_mon_dkw_bits) AS s{i}_mon_dkw_registrados',
+            f'COUNT(l.db13_s{i}_vrms_mm_s) AS db13_s{i}_vrms_registrados',
+            f'SUM(CASE WHEN l.s{i}_sm1281_tiene_alarma = 1 THEN 1 ELSE 0 END) AS s{i}_muestras_alarma',
+            f'SUM(CASE WHEN l.s{i}_sm1281_tiene_aviso = 1 THEN 1 ELSE 0 END) AS s{i}_muestras_aviso',
+            f'SUM(CASE WHEN l.s{i}_sm1281_sensor_conectado = 0 THEN 1 ELSE 0 END) AS s{i}_muestras_desconectado',
+            f'SUM(CASE WHEN l.s{i}_sm1281_sensor_corto = 1 THEN 1 ELSE 0 END) AS s{i}_muestras_corto',
+            f'SUM(CASE WHEN l.s{i}_sm1281_sensor_cable_roto = 1 THEN 1 ELSE 0 END) AS s{i}_muestras_cable_roto',
+            f'SUM(CASE WHEN (l.s{i}_sm1281_mon_bpfo_bits & 1) = 1 THEN 1 ELSE 0 END) AS s{i}_bpfo_no_valido',
+        ])
+    query = 'SELECT ' + ', '.join(parts) + f' FROM {TABLE} AS l WHERE l.captura_unix_ms >= ?;'
+    with sql_connection() as con:
+        return _row(con.cursor().execute(query, after)) or {}

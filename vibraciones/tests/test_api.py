@@ -50,7 +50,7 @@ class ApiTests(SimpleTestCase):
         with patch('vibraciones.views.modeling.load_bundle', return_value=None):
             r = Client().get('/api/v1/vibraciones/variables/', **self.headers)
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.json()['campos_total'], 74)
+        self.assertEqual(r.json()['campos_total'], 193)
         self.assertEqual(r.json()['medidor_en_indice_anomalia'], False)
 
     def test_timeline_accepted(self):
@@ -71,3 +71,37 @@ class ApiTests(SimpleTestCase):
             r = Client().get('/api/v1/vibraciones/calidad/?hours=24', **self.headers)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()['cobertura_pct']['s3_vrms'], 50.0)
+
+    def test_diagnostic_latest_preserves_raw_monitors(self):
+        row = {'id': 221331, 'captura_unix_ms': 1794507294958,
+               's1_sm1281_mon_dkw_bits': 8,
+               's2_sm1281_mon_dkw_bits': 4,
+               's3_sm1281_mon_dkw_bits': 2,
+               's1_sm1281_tiene_alarma': True,
+               's2_sm1281_tiene_aviso': True}
+        with patch('vibraciones.views.db.latest', return_value=row):
+            r = Client().get('/api/v1/vibraciones/diagnosticos/ultima/', **self.headers)
+        self.assertEqual(r.status_code, 200)
+        d = r.json()['diagnosticos']
+        self.assertEqual(d['sensores']['sensor_1']['estado'], 'ALARMA_PLC')
+        self.assertEqual(d['sensores']['sensor_2']['estado'], 'AVISO_PLC')
+
+    def test_diagnostics_history_without_raw_is_compact(self):
+        with patch('vibraciones.views.db.diagnostics_rows', return_value=[
+            {'id': 5, 'captura_unix_ms': 1794507294958,
+             's1_sm1281_mon_dkw_bits': 8}
+        ]):
+            r = Client().get('/api/v1/vibraciones/diagnosticos/historico/?hours=24&limit=10',
+                             **self.headers)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['count'], 1)
+        self.assertIn('diagnosticos', r.json()['results'][0])
+        self.assertNotIn('s1_sm1281_mon_dkw_bits', r.json()['results'][0])
+
+    def test_diagnostics_summary(self):
+        with patch('vibraciones.views.db.diagnostics_summary', return_value={
+            'total': 42, 's1_muestras_alarma': 2,
+        }):
+            r = Client().get('/api/v1/vibraciones/diagnosticos/resumen/', **self.headers)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['resumen']['s1_muestras_alarma'], 2)

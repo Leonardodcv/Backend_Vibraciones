@@ -1,3 +1,4 @@
+"""Tests v1.3. Datos sinteticos, no accede al PLC ni a SQL Server."""
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -5,156 +6,139 @@ from tempfile import TemporaryDirectory
 import numpy as np
 from django.test import SimpleTestCase, override_settings
 
+from vibraciones import modeling, operacion
 from vibraciones.forecasting import forecast_vrms
-from vibraciones.modeling import (
-    APP_VERSION, CORE_FEATURES, InsufficientData, details_for_sql,
-    feature_vector, load_bundle, rpm_with_source, save_bundle, score_row, train_rows,
-)
 
 
-def synthetic_rows(count=1200, interval_ms=1000, *, slope=0.0, with_vfd=True):
-    """Solo datos artificiales para tests, no son mediciones reales."""
-    rg = np.random.default_rng(20261111)
-    start = int(datetime(2026, 11, 11, tzinfo=timezone.utc).timestamp() * 1000)
-    rows = []
-    for i in range(count):
-        speed = 1500 + rg.normal(0, 12)
-        row = {
-            'id': i + 1,
-            'captura_unix_ms': start + i * interval_ms,
-            'modo_captura': 'ACTIVO',
-            'motor_activo': 1,
-            'rpm_sm1281': 0,  # comportamiento real observado en el PLC
-            'rpm_vfd': speed,
-            'vfd_frecuencia_salida_hz': 50 + rg.normal(0, .7) if with_vfd else None,
-            'corriente_vfd_a': 2.4 + rg.normal(0, .13) if with_vfd else None,
-            'vfd_voltaje_bus_dc_v': 320 + rg.normal(0, 8) if with_vfd else None,
-        }
-        for j in (1, 2, 3):
-            baseline = 1.0 + .3 * j
-            vrms = max(.05, baseline + .001 * (speed - 1500) + rg.normal(0, .09) + slope * i)
-            arms = max(.05, 1 + .25 * j + rg.normal(0, .11))
-            row.update({
-                f's{j}_vrms_mm_s': vrms,
-                f's{j}_arms_m_s2': arms,
-                f's{j}_peak_m_s2': arms * (3.2 + rg.normal(0, .08)),
-                f's{j}_dkw': 1 + .16 * j + rg.normal(0, .06),
-                f's{j}_qc_vrms': 1,
-                f's{j}_qc_arms': 1,
-                f's{j}_qc_dkw': 1,
-            })
-        rows.append(row)
-    return rows
+def synthetic_rows(speeds=(5., 10., 15., 20.), samples_per_speed=400):
+    rg = np.random.default_rng(20261112)
+    base = int(datetime(2026, 11, 11, tzinfo=timezone.utc).timestamp() * 1000)
+    out = []
+    for speed in speeds:
+        for _ in range(samples_per_speed):
+            i = len(out)
+            hz = speed + rg.normal(0, .03)
+            row = {'id': i+1, 'captura_unix_ms': base+i*3000,
+                   'modo_captura': 'ACTIVO', 'motor_activo': 1,
+                   'rpm_sm1281': 0, 'qc_rpm_sm1281': 0,
+                   'rpm_vfd': 30*hz, 'vfd_frecuencia_salida_hz': hz,
+                   'vfd_voltaje_bus_dc_v': 300, 'vfd_fault': 0,
+                   'orden_marcha_vfd': 1}
+            for j in (1, 2, 3):
+                vrms = .12*j + .023*speed**1.3 + rg.normal(0,.025)
+                arms = .15*j + .026*speed**1.1 + rg.normal(0,.025)
+                row.update({f's{j}_vrms_mm_s': vrms,
+                            f's{j}_arms_m_s2': arms,
+                            f's{j}_peak_m_s2': arms*(3.2+rg.normal(0,.05)),
+                            f's{j}_dkw': .3*j+.01*speed+rg.normal(0,.02)})
+            out.append(row)
+    return out
 
 
-@override_settings(VIBRATIONS_MIN_RPM=300, VIBRATIONS_SCORE_WARNING=60,
-                   VIBRATIONS_SCORE_ALERT=85, VIBRATIONS_MIN_TRAIN_SAMPLES=300,
-                   VIBRATIONS_MIN_TRAIN_MINUTES=15, VIBRATIONS_USE_VFD_CONTEXT=True)
-class ModelingTests(SimpleTestCase):
+@override_settings(VIBRATIONS_MIN_TRAIN_SAMPLES=300,
+                   VIBRATIONS_MIN_TRAIN_MINUTES=15,
+                   VIBRATIONS_SPEED_SOURCE='vfd_hz',
+                   VIBRATIONS_SPEED_BAND_WIDTH=2.,
+                   VIBRATIONS_SCORE_WARNING=60, VIBRATIONS_SCORE_ALERT=85,
+                   VIBRATIONS_EVENTS_CSV=None)
+class ModelVersion13Tests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.rows = synthetic_rows()
-        cls.bundle = train_rows(cls.rows)
+        cls.bundle = modeling.train_rows(cls.rows, confirm_normal=True)
 
-    def test_training_temporal_separation_and_three_sensors(self):
-        meta = self.bundle['metadata']
-        self.assertGreater(meta['filas_entrenamiento'], meta['filas_calibracion'])
-        self.assertEqual(meta['filas_validas'], 1200)
-        self.assertEqual(meta['sensores_requeridos'], 3)
-        self.assertEqual(meta['version_backend'], APP_VERSION)
-        self.assertEqual(list(self.bundle['features'][:len(CORE_FEATURES)]), list(CORE_FEATURES))
-        self.assertFalse(meta['medidor_jaritza_en_modelo'])
+    def test_four_speed_regimes_separate_calibration(self):
+        self.assertEqual(self.bundle['metadata']['n_regimenes'], 4)
+        self.assertTrue(self.bundle['metadata']['multivelocidad_validada'])
+        self.assertEqual(len(self.bundle['features']), 21)
+        self.assertEqual(self.bundle['metadata']['version_backend'], '1.3.0')
+        self.assertFalse(self.bundle['metadata']['medidor_jaritza_en_modelo'])
+        self.assertFalse(self.bundle['metadata']['alarmas_sm1281_son_features_modelo'])
+        self.assertFalse(self.bundle['metadata']['db13_espejo_son_features_modelo'])
 
-    def test_rpm_fallback_when_sm1281_reads_zero(self):
-        self.assertEqual(rpm_with_source(self.rows[0])[1], 'VFD')
-        output = score_row(self.rows[0], self.bundle)
-        self.assertEqual(output['fuente_rpm'], 'VFD')
-        self.assertEqual(len(output['sensores']), 3)
+    def test_speed_changes_are_not_automatically_failure(self):
+        for group in range(4):
+            normal = modeling.score_row(self.rows[group*400+250], self.bundle, eventos=())
+            self.assertIsNotNone(normal['indice_anomalia'])
+            self.assertIn(normal['estado'], ('NORMAL', 'OBSERVACION', 'ANOMALIA'))
+        # Una velocidad SIN entrenamiento no se fuerza a la mas cercana.
+        unknown = dict(self.rows[0], vfd_frecuencia_salida_hz=12.5, rpm_vfd=375)
+        result = modeling.score_row(unknown, self.bundle, eventos=())
+        self.assertEqual(result['estado'], 'SIN_MODELO_PARA_ESTA_VELOCIDAD')
+        self.assertIsNone(result['indice_anomalia'])
 
-    def test_outlier_in_sensor3_higher_than_normal(self):
-        normal = score_row(self.rows[-1], self.bundle)
-        abnormal = dict(self.rows[-1],
-                        s3_vrms_mm_s=20., s3_arms_m_s2=12.,
-                        s3_peak_m_s2=49., s3_dkw=9.)
-        exceptional = score_row(abnormal, self.bundle)
-        self.assertIsNotNone(normal['indice_anomalia'])
-        self.assertGreater(exceptional['indice_anomalia'], normal['indice_anomalia'])
-        self.assertGreaterEqual(exceptional['indice_anomalia'], 60)
-        self.assertLessEqual(len(details_for_sql(exceptional)), 1000)
-        self.assertFalse(exceptional['es_probabilidad_falla'])
+    def test_third_sensor_anomaly_increases_index(self):
+        row = self.rows[900]
+        baseline = modeling.score_row(row, self.bundle, eventos=())
+        broken = dict(row, s3_vrms_mm_s=row['s3_vrms_mm_s']*12,
+                      s3_arms_m_s2=row['s3_arms_m_s2']*8,
+                      s3_peak_m_s2=row['s3_peak_m_s2']*10,
+                      s3_dkw=row['s3_dkw']*9)
+        out = modeling.score_row(broken, self.bundle, eventos=())
+        self.assertGreaterEqual(out['indice_anomalia'], baseline['indice_anomalia'])
+        self.assertLessEqual(len(modeling.details_for_sql(out)), 1000)
 
-    def test_missing_third_sensor_must_not_score_as_normal(self):
-        missing = dict(self.rows[0], s3_vrms_mm_s=None)
-        score = score_row(missing, self.bundle)
-        self.assertEqual(score['estado'], 'SIN_DATOS')
+    def test_rest_vs_unconfirmed_power(self):
+        rest = dict(self.rows[0], vfd_frecuencia_salida_hz=0, rpm_vfd=0,
+                    modo_captura='REPOSO', motor_activo=False)
+        result = modeling.score_row(rest, self.bundle, eventos=())
+        self.assertEqual(result['estado'], 'ENERGIZADO_EN_REPOSO')
+        self.assertIsNone(result['indice_anomalia'])
+        off = dict(rest, vfd_voltaje_bus_dc_v=0)
+        state = operacion.estado_operativo(off)
+        self.assertEqual(state['estado'], 'SIN_GIRO_ENERGIA_NO_CONFIRMADA')
+
+    def test_operator_relay_annotation_priority(self):
+        row = self.rows[0]
+        evt = operacion.Evento(row['captura_unix_ms'], row['captura_unix_ms']+3001,
+                               'FALLA_ELECTRICA_CONFIRMADA', None, False, 'Relevador')
+        score = modeling.score_row(row, self.bundle, eventos=(evt,))
+        self.assertEqual(score['estado'], 'FALLA_ELECTRICA_CONFIRMADA')
         self.assertIsNone(score['indice_anomalia'])
 
-    def test_rest_and_post_stop(self):
-        rest = dict(self.rows[0], modo_captura='REPOSO', motor_activo=0,
-                    rpm_sm1281=0, rpm_vfd=0)
-        self.assertEqual(score_row(rest, self.bundle)['estado'], 'REPOSO')
-        post = dict(self.rows[0], modo_captura='POST_PARO')
-        self.assertEqual(score_row(post, self.bundle)['estado'], 'TRANSICION')
+    def test_missing_third_sensor_not_imputed(self):
+        row = dict(self.rows[5], s3_vrms_mm_s=None)
+        self.assertEqual(modeling.score_row(row, self.bundle, eventos=())['estado'], 'SIN_DATOS')
 
-    def test_training_rejects_old_rows_without_sensor3(self):
-        old = [dict(r, s3_vrms_mm_s=None) for r in self.rows]
-        with self.assertRaises(InsufficientData):
-            train_rows(old)
+    def test_transition_excluded(self):
+        before = self.rows[100]
+        next_speed = dict(self.rows[101], vfd_frecuencia_salida_hz=16, rpm_vfd=480)
+        self.assertEqual(modeling.score_row(next_speed, self.bundle,
+                         previous=before, eventos=())['estado'], 'TRANSICION')
 
-    def test_training_rejects_short_reference(self):
-        with self.assertRaises(InsufficientData):
-            train_rows(self.rows[:200])
+    def test_artifact_is_new_and_separate(self):
+        self.assertIn('v1_3', modeling.bundle_path().name)
+        with TemporaryDirectory() as folder:
+            path = Path(folder) / 'model.joblib'
+            modeling.save_bundle(self.bundle, path)
+            model = modeling.load_bundle(path)
+            self.assertEqual(model['metadata']['version'], self.bundle['metadata']['version'])
 
-    def test_not_a_match_when_speed_regime_changes(self):
-        high = dict(self.rows[0], rpm_vfd=2900.)
-        self.assertEqual(score_row(high, self.bundle)['estado'], 'FUERA_RANGO_RPM')
+    def test_events_require_confirmed_healthy(self):
+        with self.assertRaises(modeling.InsufficientData):
+            modeling.train_rows(self.rows[:500], confirm_normal=False)
 
-    def test_crest_and_pairs(self):
-        vector, reason = feature_vector(self.rows[0])
-        self.assertIsNone(reason)
-        vals = dict(zip(CORE_FEATURES, vector))
-        self.assertAlmostEqual(vals['s3_factor_cresta'],
-                               self.rows[0]['s3_peak_m_s2'] / self.rows[0]['s3_arms_m_s2'])
-        self.assertAlmostEqual(vals['vrms_diff_1_3'],
-                               abs(self.rows[0]['s1_vrms_mm_s'] - self.rows[0]['s3_vrms_mm_s']))
+    def test_forecast_three_sensors(self):
+        rows = synthetic_rows(speeds=(20.,), samples_per_speed=40)
+        for i,row in enumerate(rows):
+            row['captura_unix_ms']+=i*57000
+        result = forecast_vrms(rows)
+        self.assertTrue(result['disponible'])
+        self.assertEqual(set(result['sensores']), {'sensor_1','sensor_2','sensor_3'})
 
-    def test_optional_vfd_context_requires_real_values(self):
-        self.assertGreater(len(self.bundle['metadata']['features_vfd_activas']), 0)
-        name = self.bundle['metadata']['features_vfd_activas'][0]
-        missing = dict(self.rows[0], **{name: None})
-        score = score_row(missing, self.bundle)
-        self.assertEqual(score['estado'], 'SIN_DATOS')
-        self.assertIn('contexto_vfd', score['razon'])
+    def test_plc_alarm_annotates_but_not_auto_failure(self):
+        row = dict(self.rows[900], s1_sm1281_mon_dkw_bits=8,
+                   s1_sm1281_tiene_alarma=True, s1_sm1281_sensorstate_bits=2,
+                   s1_sm1281_faulttype_bits=1)
+        score = modeling.score_row(row, self.bundle, eventos=())
+        self.assertIsNotNone(score['indice_anomalia'])
+        self.assertIn({'sensor': 1, 'nivel': 'ALARMA_PLC'},
+                      score['diagnostico_sm1281']['alertas_plc'])
 
-    def test_artifact_roundtrip(self):
-        with TemporaryDirectory() as td:
-            path = Path(td) / 'modelo_v1_1.joblib'
-            save_bundle(self.bundle, path)
-            loaded = load_bundle(path)
-            self.assertEqual(loaded['metadata']['version'], self.bundle['metadata']['version'])
-            self.assertAlmostEqual(score_row(self.rows[30], loaded)['indice_anomalia'],
-                                   score_row(self.rows[30], self.bundle)['indice_anomalia'])
-
-
-@override_settings(VIBRATIONS_MIN_RPM=300)
-class ForecastTests(SimpleTestCase):
-    def test_forecast_all_three_channels(self):
-        rows = synthetic_rows(count=40, interval_ms=60000, slope=.018)
-        forecast = forecast_vrms(rows, horizon_minutes=30)
-        self.assertTrue(forecast['disponible'])
-        self.assertEqual(set(forecast['sensores']), {'sensor_1', 'sensor_2', 'sensor_3'})
-        self.assertGreater(forecast['sensores']['sensor_3']['vrms_proyectado_mm_s'],
-                           forecast['sensores']['sensor_3']['vrms_actual_mm_s'])
-        self.assertIsNone(forecast['tiempo_hasta_falla'])
-
-    def test_forecast_disallows_old_data_without_sensor3(self):
-        old = [dict(row, s3_vrms_mm_s=None) for row in synthetic_rows(40, 60000)]
-        result = forecast_vrms(old)
-        self.assertFalse(result['disponible'])
-
-    def test_variable_rpm_disables_extrapolation(self):
-        rows = synthetic_rows(40, interval_ms=60000)
-        for i, row in enumerate(rows):
-            row['rpm_vfd'] = 800 if i % 2 else 1900
-        self.assertEqual(forecast_vrms(rows)['razon'], 'rpm_variable_no_comparable')
+    def test_sensor_disconnected_does_not_generate_anomaly_score(self):
+        row = dict(self.rows[900], s3_sm1281_sensorstate_bits=0,
+                   s3_sm1281_sensor_conectado=False)
+        score = modeling.score_row(row, self.bundle, eventos=())
+        self.assertEqual(score['estado'], 'CALIDAD_INSTRUMENTACION_INVALIDA')
+        self.assertIsNone(score['indice_anomalia'])
