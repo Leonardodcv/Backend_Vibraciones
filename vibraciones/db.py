@@ -46,11 +46,26 @@ def now_ms() -> int:
     return int(datetime.now(timezone.utc).timestamp() * 1000)
 
 
+def _env_int(name: str, default: int) -> int:
+    """Los valores vacios en .env usan el valor predeterminado.
+
+    Un valor no numerico nunca se acepta silenciosamente; se informa el
+    nombre del ajuste, sin revelar credenciales SQL.
+    """
+    value = (os.getenv(name) or '').strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f'{name} debe ser un numero entero; valor recibido: {value!r}') from exc
+
+
 def _connection_string() -> str:
     """Cadena ODBC, sin credenciales incrustadas en el proyecto ni logs."""
     driver = os.getenv('SQL_DRIVER', 'ODBC Driver 18 for SQL Server')
     host = os.getenv('SQL_HOST', '10.10.17.13')
-    port = int(os.getenv('SQL_PORT', '1433'))
+    port = _env_int('SQL_PORT', 1433)
     database = os.getenv('SQL_DATABASE', 'MantenimientoPredictivo')
     if not 1 <= port <= 65535:
         raise ValueError('SQL_PORT fuera de rango')
@@ -85,10 +100,10 @@ def _connection_string() -> str:
 def sql_connection(*, write: bool = False) -> Iterator[pyodbc.Connection]:
     conn = pyodbc.connect(
         _connection_string(),
-        timeout=int(os.getenv('SQL_CONNECTION_TIMEOUT', '5')),
+        timeout=_env_int('SQL_CONNECTION_TIMEOUT', 5),
         autocommit=not write,
     )
-    conn.timeout = int(os.getenv('SQL_QUERY_TIMEOUT', '20'))
+    conn.timeout = _env_int('SQL_QUERY_TIMEOUT', 20)
     try:
         yield conn
         if write:

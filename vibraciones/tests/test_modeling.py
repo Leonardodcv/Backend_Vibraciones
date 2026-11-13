@@ -80,11 +80,21 @@ class ModelVersion13Tests(SimpleTestCase):
         self.assertLessEqual(len(modeling.details_for_sql(out)), 1000)
 
     def test_rest_vs_unconfirmed_power(self):
+        # Reposo normal: orden de marcha desactivada, bus DC con tension.
         rest = dict(self.rows[0], vfd_frecuencia_salida_hz=0, rpm_vfd=0,
-                    modo_captura='REPOSO', motor_activo=False)
+                    modo_captura='REPOSO', motor_activo=False,
+                    orden_marcha_vfd=False)
         result = modeling.score_row(rest, self.bundle, eventos=())
         self.assertEqual(result['estado'], 'ENERGIZADO_EN_REPOSO')
         self.assertIsNone(result['indice_anomalia'])
+        # Orden activa SIN giro es una condicion distinta, que no debe
+        # confundirse con reposo normal ni generar puntuacion de fallo.
+        orden_activa = dict(rest, orden_marcha_vfd=True)
+        order_result = modeling.score_row(orden_activa, self.bundle, eventos=())
+        self.assertEqual(order_result['estado'], 'ORDEN_MARCHA_SIN_GIRO')
+        self.assertIsNone(order_result['indice_anomalia'])
+        self.assertIn('ORDEN_MARCHA_SIN_MOVIMIENTO_MEDIDO',
+                      order_result['advertencias_operacion'])
         off = dict(rest, vfd_voltaje_bus_dc_v=0)
         state = operacion.estado_operativo(off)
         self.assertEqual(state['estado'], 'SIN_GIRO_ENERGIA_NO_CONFIRMADA')

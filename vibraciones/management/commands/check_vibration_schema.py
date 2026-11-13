@@ -25,6 +25,8 @@ class Command(BaseCommand):
                 count = cur.fetchone()[0]
         except CommandError:
             raise
+        except ValueError as exc:
+            raise CommandError(f"Configuracion SQL invalida: {exc}") from exc
         except Exception as exc:
             raise CommandError("No se pudo consultar esquema SQL: " + type(exc).__name__) from exc
         self.stdout.write(self.style.SUCCESS(

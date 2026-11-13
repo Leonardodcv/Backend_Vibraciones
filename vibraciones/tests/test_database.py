@@ -10,7 +10,7 @@ from vibraciones.fields import ALL_COLUMNS, COLUMNS_BY_GROUP, MEDIDOR_FIELDS
 class SchemaTests(SimpleTestCase):
     def test_193_columns_unique_and_three_sensor_groups(self):
         self.assertEqual(len(ALL_COLUMNS), 193)
-        self.assertEqual(len(set(ALL_COLUMNS)), 74)
+        self.assertEqual(len(set(ALL_COLUMNS)), 193)
         self.assertIn('s3_vrms_mm_s', ALL_COLUMNS)
         self.assertIn('medidor_thd_corriente_l2_raw', ALL_COLUMNS)
         self.assertEqual(len(COLUMNS_BY_GROUP['sensor_3']), 8)
@@ -29,7 +29,7 @@ class SchemaTests(SimpleTestCase):
         'SQL_AUTH': 'sql', 'SQL_USERNAME': 'testuser',
         'SQL_PASSWORD': 'a;b}c', 'SQL_HOST': '10.10.17.13',
         'SQL_PORT': '1433', 'SQL_DATABASE': 'MantenimientoPredictivo',
-    })
+    }, clear=True)
     def test_connection_matches_existing_server_and_escapes_password(self):
         c = db._connection_string()
         self.assertIn('PWD={a;b}}c}', c)
@@ -37,7 +37,24 @@ class SchemaTests(SimpleTestCase):
         self.assertIn('SERVER={10.10.17.13,1433}', c)
         self.assertNotIn('SQL_PASSWORD', c)
 
-    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'})
+    @patch.dict(os.environ, {
+        'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y',
+        'SQL_PORT': '', 'SQL_CONNECTION_TIMEOUT': '', 'SQL_QUERY_TIMEOUT': '',
+    }, clear=True)
+    def test_blank_sql_port_and_timeouts_use_safe_defaults(self):
+        self.assertIn('SERVER={10.10.17.13,1433}', db._connection_string())
+        self.assertEqual(db._env_int('SQL_CONNECTION_TIMEOUT', 5), 5)
+        self.assertEqual(db._env_int('SQL_QUERY_TIMEOUT', 20), 20)
+
+    @patch.dict(os.environ, {
+        'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y',
+        'SQL_PORT': 'abc',
+    }, clear=True)
+    def test_invalid_sql_port_is_reported_clearly(self):
+        with self.assertRaisesRegex(ValueError, 'SQL_PORT debe ser un numero entero'):
+            db._connection_string()
+
+    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'}, clear=True)
     @patch('vibraciones.db.pyodbc.connect')
     def test_connection_closes(self, connector):
         con = MagicMock()
@@ -46,7 +63,7 @@ class SchemaTests(SimpleTestCase):
         self.assertTrue(db.ping())
         con.close.assert_called_once()
 
-    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'})
+    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'}, clear=True)
     @patch('vibraciones.db.pyodbc.connect')
     def test_parameterized_scoring_insert(self, connector):
         connector.return_value = MagicMock()
@@ -60,7 +77,7 @@ class SchemaTests(SimpleTestCase):
         self.assertEqual(args[4], 123)
         connector.return_value.commit.assert_called_once()
 
-    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'})
+    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'}, clear=True)
     @patch('vibraciones.db.pyodbc.connect')
     def test_unscored_skips_rows_without_third_sensor(self, connector):
         connector.return_value = MagicMock()
@@ -72,7 +89,7 @@ class SchemaTests(SimpleTestCase):
         self.assertIn('l.modo_captura', query)
         self.assertIn('r.version_modelo', query)
 
-    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'})
+    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'}, clear=True)
     @patch('vibraciones.db.pyodbc.connect')
     def test_timeline_includes_three_sensors(self, connector):
         connector.return_value = MagicMock()
@@ -83,7 +100,7 @@ class SchemaTests(SimpleTestCase):
         self.assertIn('s3_vrms_promedio_mm_s', sql)
         self.assertIn('medidor_frecuencia_promedio_hz', sql)
 
-    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'})
+    @patch.dict(os.environ, {'SQL_AUTH': 'sql', 'SQL_USERNAME': 'x', 'SQL_PASSWORD': 'y'}, clear=True)
     @patch('vibraciones.db.pyodbc.connect')
     def test_diagnostic_history_is_parameterized(self, connector):
         connector.return_value = MagicMock()
